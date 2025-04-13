@@ -77,18 +77,57 @@ func (j *Jenkins) BuildJob(ctx context.Context, jobPath string) (int, error) {
 	return queueItemID, nil
 }
 
+// BuildJobWithParameters triggers a build for the specified job with parameters and returns the queue item ID
+func (j *Jenkins) BuildJobWithParameters(ctx context.Context, jobPath string, parameters map[string]string) (int, error) {
+	u, err := url.Parse(j.baseURL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse base url: %w", err)
+	}
+
+	u = u.JoinPath("/job/", j.parseJobPath(jobPath), "/buildWithParameters")
+
+	values := url.Values{}
+	for key, value := range parameters {
+		values.Set(key, value)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(values.Encode()))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	if j.withAuth != nil {
+		j.withAuth(req)
+	}
+
+	res, err := j.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to perform request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusCreated {
+		return 0, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	queueItemID, err := strconv.Atoi(path.Base(path.Clean(res.Header.Get("Location"))))
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse queue item ID: %w", err)
+	}
+
+	return queueItemID, nil
+}
+
 // ListJobs lists all jobs in the Jenkins instance
-func (j *Jenkins) ListJobs(ctx context.Context) ([]Job, error) {
+func (j *Jenkins) ListJobs(ctx context.Context, jobPath string) ([]Job, error) {
 	u, err := url.Parse(j.baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse base url: %w", err)
 	}
 
-	u = u.JoinPath("/api/json")
-
-	q := u.Query()
-	q.Set("tree", "jobs[name,url,color]")
-	u.RawQuery = q.Encode()
+	u = u.JoinPath(j.parseJobPath(jobPath), "/api/json")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -153,6 +192,42 @@ func (j *Jenkins) GetBuild(ctx context.Context, jobPath string, buildID int) (Bu
 	}
 
 	return build, nil
+}
+
+// GetJob gets a Jenkins job
+func (j *Jenkins) GetJob(ctx context.Context, jobPath string) (Job, error) {
+	u, err := url.Parse(j.baseURL)
+	if err != nil {
+		return Job{}, fmt.Errorf("failed to parse base url: %w", err)
+	}
+
+	u = u.JoinPath("/job/", j.parseJobPath(jobPath), "/api/json")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return Job{}, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if j.withAuth != nil {
+		j.withAuth(req)
+	}
+
+	res, err := j.client.Do(req)
+	if err != nil {
+		return Job{}, fmt.Errorf("failed to perform request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return Job{}, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	var job Job
+	if err := json.NewDecoder(res.Body).Decode(&job); err != nil {
+		return Job{}, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return job, nil
 }
 
 // GetPendingInputActions gets the pending input actions for a Jenkins build

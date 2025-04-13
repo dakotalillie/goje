@@ -17,7 +17,7 @@ type QueueItemPoller struct {
 func newQueueItemPoller(jenkins *Jenkins, queueItemID int) *QueueItemPoller {
 	return &QueueItemPoller{
 		jenkins:         jenkins,
-		pollingInterval: time.Second,
+		pollingInterval: 3 * time.Second,
 		queueItemID:     queueItemID,
 		timeout:         0,
 	}

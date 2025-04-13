@@ -22,7 +22,7 @@ func newBuildPoller(jenkins *Jenkins, jobPath string, buildID int) *BuildPoller 
 		buildID:         buildID,
 		jenkins:         jenkins,
 		jobPath:         jobPath,
-		pollingInterval: time.Second,
+		pollingInterval: 5 * time.Second,
 		timeout:         0,
 	}
 }
