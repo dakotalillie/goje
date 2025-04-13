@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -192,6 +193,60 @@ func (j *Jenkins) GetBuild(ctx context.Context, jobPath string, buildID int) (Bu
 	}
 
 	return build, nil
+}
+
+// GetBuildLogs gets the logs for a Jenkins build
+func (j *Jenkins) GetBuildLogs(ctx context.Context, jobPath string, buildID int, start int) (string, int, bool, error) {
+	u, err := url.Parse(j.baseURL)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("failed to parse base url: %w", err)
+	}
+
+	u = u.JoinPath("/job/", j.parseJobPath(jobPath), strconv.Itoa(buildID), "/logText/progressiveText")
+
+	q := u.Query()
+	q.Set("start", strconv.Itoa(start))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if j.withAuth != nil {
+		j.withAuth(req)
+	}
+
+	res, err := j.client.Do(req)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("failed to perform request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return "", 0, false, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	rawTextSize := res.Header.Get("X-Text-Size")
+	textSize, err := strconv.Atoi(rawTextSize)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("failed to parse X-Text-Size header: %w", err)
+	}
+
+	var moreData bool
+	if rawMoreData := res.Header.Get("X-More-Data"); rawMoreData != "" {
+		moreData, err = strconv.ParseBool(rawMoreData)
+		if err != nil {
+			return "", 0, false, fmt.Errorf("failed to parse X-More-Data header: %w", err)
+		}
+	}
+
+	return strings.TrimSpace(string(bodyBytes)), textSize, moreData, nil
 }
 
 // GetJob gets a Jenkins job

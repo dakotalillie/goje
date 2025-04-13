@@ -38,7 +38,12 @@ func buildJobWithParameters(jenkins *goje.Jenkins) error {
 
 	slog.Info("build started", "url", build.URL)
 
-	build, err = jenkins.NewBuildPoller(jobPath, buildID).Poll(ctx)
+	logsHandler := func(logs string) error {
+		fmt.Println(logs)
+		return nil
+	}
+
+	build, err = jenkins.NewBuildPoller(jobPath, buildID).WithLogsHandler(logsHandler).Poll(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to poll build: %w", err)
 	}
@@ -48,6 +53,16 @@ func buildJobWithParameters(jenkins *goje.Jenkins) error {
 	}
 
 	slog.Info("build succeeded")
+
+	logs, nextStart, hasMore, err := jenkins.GetBuildLogs(ctx, jobPath, buildID, 0)
+	if err != nil {
+		return fmt.Errorf("failed to get build logs: %w", err)
+	}
+
+	fmt.Println(logs)
+	fmt.Println(nextStart)
+	fmt.Println(hasMore)
+
 	return nil
 }
 
@@ -78,7 +93,7 @@ func buildJobWithInput(jenkins *goje.Jenkins) error {
 
 	slog.Info("build started", "url", build.URL)
 
-	build, err = jenkins.NewBuildPoller(jobPath, buildID).OnInput(jenkins.Proceed()).Poll(ctx)
+	build, err = jenkins.NewBuildPoller(jobPath, buildID).WithInputHandler(jenkins.Proceed()).Poll(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to poll build: %w", err)
 	}

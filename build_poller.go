@@ -6,13 +6,18 @@ import (
 	"time"
 )
 
-type InputHandler func(ctx context.Context, jobPath string, buildID int, actions []PendingInputAction) error
+type (
+	InputHandler func(ctx context.Context, jobPath string, buildID int, actions []PendingInputAction) error
+	LogsHandler  func(logs string) error
+)
 
 type BuildPoller struct {
 	buildID         int
 	inputHandler    InputHandler
 	jenkins         *Jenkins
 	jobPath         string
+	logsHandler     LogsHandler
+	logsStart       int
 	pollingInterval time.Duration
 	timeout         time.Duration
 }
@@ -20,11 +25,24 @@ type BuildPoller struct {
 func newBuildPoller(jenkins *Jenkins, jobPath string, buildID int) *BuildPoller {
 	return &BuildPoller{
 		buildID:         buildID,
+		inputHandler:    nil,
 		jenkins:         jenkins,
 		jobPath:         jobPath,
+		logsHandler:     nil,
+		logsStart:       0,
 		pollingInterval: 5 * time.Second,
 		timeout:         0,
 	}
+}
+
+func (b *BuildPoller) WithInputHandler(handler InputHandler) *BuildPoller {
+	b.inputHandler = handler
+	return b
+}
+
+func (b *BuildPoller) WithLogsHandler(handler LogsHandler) *BuildPoller {
+	b.logsHandler = handler
+	return b
 }
 
 func (b *BuildPoller) WithPollingInterval(pollingInterval time.Duration) *BuildPoller {
@@ -34,11 +52,6 @@ func (b *BuildPoller) WithPollingInterval(pollingInterval time.Duration) *BuildP
 
 func (b *BuildPoller) WithTimeout(timeout time.Duration) *BuildPoller {
 	b.timeout = timeout
-	return b
-}
-
-func (b *BuildPoller) OnInput(handler InputHandler) *BuildPoller {
-	b.inputHandler = handler
 	return b
 }
 
@@ -53,6 +66,18 @@ func (b *BuildPoller) Poll(ctx context.Context) (Build, error) {
 		build, err := b.jenkins.GetBuild(ctx, b.jobPath, b.buildID)
 		if err != nil {
 			return Build{}, fmt.Errorf("failed to get build: %w", err)
+		}
+
+		if b.logsHandler != nil {
+			logs, nextStart, _, err := b.jenkins.GetBuildLogs(ctx, b.jobPath, b.buildID, b.logsStart)
+			if err != nil {
+				return Build{}, fmt.Errorf("failed to get build logs: %w", err)
+			}
+
+			b.logsStart = nextStart
+			if err := b.logsHandler(logs); err != nil {
+				return Build{}, fmt.Errorf("failed to invoke logs handler: %w", err)
+			}
 		}
 
 		if !build.Building {
