@@ -19,8 +19,8 @@ type Jenkins struct {
 	withAuth func(req *http.Request)
 }
 
-// New creates a new Jenkins client
-func New(baseURL string) *Jenkins {
+// NewJenkins creates a new Jenkins client
+func NewJenkins(baseURL string) *Jenkins {
 	return &Jenkins{
 		baseURL:  baseURL,
 		client:   http.DefaultClient,

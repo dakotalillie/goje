@@ -35,12 +35,12 @@ func newBuildPoller(jenkins *Jenkins, jobPath string, buildID int) *BuildPoller 
 	}
 }
 
-func (b *BuildPoller) WithInputHandler(handler InputHandler) *BuildPoller {
+func (b *BuildPoller) OnInput(handler InputHandler) *BuildPoller {
 	b.inputHandler = handler
 	return b
 }
 
-func (b *BuildPoller) WithLogsHandler(handler LogsHandler) *BuildPoller {
+func (b *BuildPoller) OnLogs(handler LogsHandler) *BuildPoller {
 	b.logsHandler = handler
 	return b
 }
